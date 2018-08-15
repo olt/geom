@@ -19,7 +19,7 @@ JTS port.
 */
 type Triangle struct {
 	// the triangle referenced is to the right of this edge
-	qe *quadedge.QuadEdge
+	qe quadedge.QuadEdge
 }
 
 /*
@@ -131,7 +131,7 @@ If this method is called as a.sharedEdge(b), the result will be edge lr.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangle) sharedEdge(other *Triangle) (*quadedge.QuadEdge, error) {
+func (tri *Triangle) sharedEdge(other *Triangle) (quadedge.QuadEdge, error) {
 	ae := tri.qe
 	be := other.qe
 	foundMatch := false
@@ -154,7 +154,7 @@ func (tri *Triangle) sharedEdge(other *Triangle) (*quadedge.QuadEdge, error) {
 
 	if foundMatch == false {
 		// if there wasn't a matching edge
-		return nil, ErrNoMatchingEdgeFound
+		return quadedge.ZeroQuadEdge, ErrNoMatchingEdgeFound
 	}
 
 	// return the matching edge in triangle a

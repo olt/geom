@@ -41,7 +41,7 @@ type Triangulator struct {
 	// maintain an index of vertices to quad edges. Each vertex will point to
 	// one quad edge that has the vertex as an origin. The other quad edges
 	// that point to this vertex can be reached from there.
-	vertexIndex map[quadedge.Vertex]*quadedge.QuadEdge
+	vertexIndex map[quadedge.Vertex]quadedge.QuadEdge
 }
 
 /*
@@ -66,7 +66,7 @@ func (tri *Triangulator) createSegment(s triangulate.Segment) error {
 	if err != nil && err != quadedge.ErrLocateFailure {
 		return err
 	}
-	if qe != nil {
+	if qe != quadedge.ZeroQuadEdge {
 		// if the segment already exists
 		return nil
 	}
@@ -123,9 +123,9 @@ It is invalid to call this method on the last edge that links to a vertex.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangulator) deleteEdge(e *quadedge.QuadEdge) error {
+func (tri *Triangulator) deleteEdge(e quadedge.QuadEdge) error {
 
-	toRemove := make(map[*quadedge.QuadEdge]bool, 4)
+	toRemove := make(map[quadedge.QuadEdge]bool, 4)
 
 	eSym := e.Sym()
 	eRot := e.Rot()
@@ -263,7 +263,7 @@ func (tri *Triangulator) insertSites(g geom.Geometry) error {
 	tri.subdiv = tri.builder.GetSubdivision()
 
 	// Add all the edges to a constant time lookup
-	tri.vertexIndex = make(map[quadedge.Vertex]*quadedge.QuadEdge)
+	tri.vertexIndex = make(map[quadedge.Vertex]quadedge.QuadEdge)
 	edges := tri.subdiv.GetEdges()
 	for i := range edges {
 		e := edges[i]
@@ -375,7 +375,7 @@ IsConstraint returns true if e is a constrained edge.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangulator) IsConstraint(e *quadedge.QuadEdge) bool {
+func (tri *Triangulator) IsConstraint(e quadedge.QuadEdge) bool {
 
 	_, ok := tri.constraints[triangulate.NewSegment(geom.Line{e.Orig(), e.Dest()})]
 	if ok {
@@ -403,10 +403,10 @@ If tri is nil a panic will occur.
 func (tri *Triangulator) insertEdgeCDT(ab *triangulate.Segment) error {
 
 	qe, err := tri.LocateSegment(ab.GetStart(), ab.GetEnd())
-	if qe != nil && err != nil {
+	if qe != quadedge.ZeroQuadEdge && err != nil {
 		return fmt.Errorf("error inserting constraint: %v", err)
 	}
-	if qe != nil {
+	if qe != quadedge.ZeroQuadEdge {
 		// nothing to do, the edge already exists.
 		return nil
 	}
@@ -418,7 +418,7 @@ func (tri *Triangulator) insertEdgeCDT(ab *triangulate.Segment) error {
 		return err
 	}
 
-	removalList := make([]*quadedge.QuadEdge, 0)
+	removalList := make([]quadedge.QuadEdge, 0)
 
 	// PU:=EmptyList
 	pu := make([]quadedge.Vertex, 0)
@@ -565,11 +565,11 @@ This is looking for an exact match and tolerance will not be considered.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangulator) locateEdgeByVertex(v quadedge.Vertex) (*quadedge.QuadEdge, error) {
+func (tri *Triangulator) locateEdgeByVertex(v quadedge.Vertex) (quadedge.QuadEdge, error) {
 	qe := tri.vertexIndex[v]
 
-	if qe == nil {
-		return nil, quadedge.ErrLocateFailure
+	if qe == quadedge.ZeroQuadEdge {
+		return quadedge.ZeroQuadEdge, quadedge.ErrLocateFailure
 	}
 	return qe, nil
 }
@@ -582,18 +582,18 @@ This is looking for an exact match and tolerance will not be considered.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangulator) LocateSegment(v1 quadedge.Vertex, v2 quadedge.Vertex) (*quadedge.QuadEdge, error) {
+func (tri *Triangulator) LocateSegment(v1 quadedge.Vertex, v2 quadedge.Vertex) (quadedge.QuadEdge, error) {
 	qe := tri.vertexIndex[v1]
 
-	if qe == nil {
-		return nil, quadedge.ErrLocateFailure
+	if qe == quadedge.ZeroQuadEdge {
+		return quadedge.ZeroQuadEdge, quadedge.ErrLocateFailure
 	}
 
 	start := qe
 	for true {
-		if qe == nil || qe.IsLive() == false {
+		if qe == quadedge.ZeroQuadEdge || qe.IsLive() == false {
 			log.Printf("unexpected dead node: %v", qe)
-			return nil, fmt.Errorf("nil or dead qe when locating segment %v %v", v1, v2)
+			return quadedge.ZeroQuadEdge, fmt.Errorf("nil or dead qe when locating segment %v %v", v1, v2)
 		}
 		if v2.Equals(qe.Dest()) {
 			return qe, nil
@@ -601,7 +601,7 @@ func (tri *Triangulator) LocateSegment(v1 quadedge.Vertex, v2 quadedge.Vertex) (
 
 		qe = qe.ONext()
 		if qe == start {
-			return nil, quadedge.ErrLocateFailure
+			return quadedge.ZeroQuadEdge, quadedge.ErrLocateFailure
 		}
 	}
 
@@ -614,7 +614,7 @@ Dest() as the edge provided. If there are none, no changes are made.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangulator) removeConstraintEdge(e *quadedge.QuadEdge) {
+func (tri *Triangulator) removeConstraintEdge(e quadedge.QuadEdge) {
 	delete(tri.constraints, triangulate.NewSegment(geom.Line{e.Orig(), e.Dest()}))
 	delete(tri.constraints, triangulate.NewSegment(geom.Line{e.Dest(), e.Orig()}))
 }
@@ -633,7 +633,7 @@ v - The vertex to modify in the index.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangulator) removeEdgesFromVertexIndex(toRemove map[*quadedge.QuadEdge]bool, v quadedge.Vertex) error {
+func (tri *Triangulator) removeEdgesFromVertexIndex(toRemove map[quadedge.QuadEdge]bool, v quadedge.Vertex) error {
 	ve := tri.vertexIndex[v]
 	if toRemove[ve] {
 		for testEdge := ve.ONext(); ; testEdge = testEdge.ONext() {
@@ -657,7 +657,7 @@ splitEdge splits the given edge at the vertex v.
 
 If tri is nil a panic will occur.
 */
-func (tri *Triangulator) splitEdge(e *quadedge.QuadEdge, v quadedge.Vertex) error {
+func (tri *Triangulator) splitEdge(e quadedge.QuadEdge, v quadedge.Vertex) error {
 	constraint := tri.IsConstraint(e)
 
 	ePrev := e.OPrev()
@@ -767,7 +767,7 @@ If tri is nil a panic will occur.
 */
 func (tri *Triangulator) validateVertexIndex() error {
 	// collect a set of all edges
-	edgeSet := make(map[*quadedge.QuadEdge]bool)
+	edgeSet := make(map[quadedge.QuadEdge]bool)
 	vertexSet := make(map[quadedge.Vertex]bool)
 	edges := tri.subdiv.GetEdges()
 	for i := range edges {

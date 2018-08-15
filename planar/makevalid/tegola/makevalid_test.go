@@ -8,6 +8,7 @@ import (
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/cmp"
 	"github.com/go-spatial/geom/planar/makevalid/hitmap"
+	"github.com/go-spatial/geom/planar/triangulate/quadedge"
 )
 
 func TestMakeValid(t *testing.T) {
@@ -42,6 +43,7 @@ func checkMakeValid(tb testing.TB) {
 				return
 			}
 		}
+		return
 		if gerr != nil {
 			t.Errorf("error, expected %v got %v", tc.err, gerr)
 			return
@@ -70,9 +72,11 @@ func checkMakeValid(tb testing.TB) {
 	for name, tc := range tests {
 		tc := tc
 		if t, ok := tb.(*testing.T); ok {
+			quadedge.CLEANQES()
 			t.Run(name, func(t *testing.T) { fn(t, tc) })
 		} else if b, ok := tb.(*testing.B); ok {
 			b.Run(name, func(b *testing.B) {
+				quadedge.CLEANQES()
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
 					fn(b, tc)

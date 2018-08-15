@@ -62,7 +62,7 @@ triangulator will still be in a consistent state.
 
 If idt is nil a panic will occur.
 */
-func (idt *IncrementalDelaunayTriangulator) InsertSite(v quadedge.Vertex) (*quadedge.QuadEdge, error) {
+func (idt *IncrementalDelaunayTriangulator) InsertSite(v quadedge.Vertex) (quadedge.QuadEdge, error) {
 
 	// log.Printf("Inserting: %v", v);
 	// log.Printf("Initial: %v", idt.subdiv.DebugDumpEdges())
@@ -76,7 +76,7 @@ func (idt *IncrementalDelaunayTriangulator) InsertSite(v quadedge.Vertex) (*quad
 	e, err := idt.subdiv.Locate(v)
 	// log.Printf("e: %v -> %v", e.Orig(), e.Dest())
 	if err != nil {
-		return nil, err
+		return quadedge.ZeroQuadEdge, err
 	}
 
 	if idt.subdiv.IsVertexOfEdge(e, v) {
@@ -113,7 +113,7 @@ func (idt *IncrementalDelaunayTriangulator) InsertSite(v quadedge.Vertex) (*quad
 	// is satisfied.
 	for {
 		t := e.OPrev()
-		if t.Dest().RightOf(*e) && v.IsInCircle(e.Orig(), t.Dest(), e.Dest()) {
+		if t.Dest().RightOf(e) && v.IsInCircle(e.Orig(), t.Dest(), e.Dest()) {
 			quadedge.Swap(e)
 			e = e.OPrev()
 		} else if e.ONext() == startEdge {

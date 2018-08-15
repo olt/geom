@@ -22,5 +22,5 @@ Author Martin Davis
 Ported to Go by Jason R. Surratt
 */
 type QuadEdgeLocator interface {
-	Locate(v Vertex) (*QuadEdge, error)
+	Locate(v Vertex) (QuadEdge, error)
 }

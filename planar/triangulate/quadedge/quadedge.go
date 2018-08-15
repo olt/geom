@@ -38,11 +38,32 @@ Author David Skea
 Author Martin Davis
 Ported to Go by Jason R. Surratt
 */
-type QuadEdge struct {
-	rot    *QuadEdge
+type quadEdge struct {
+	rot    int
 	vertex Vertex
-	next   *QuadEdge
-	data   interface{}
+	next   int
+}
+
+type QuadEdge struct {
+	// actual information is stored in quadEdge in QuadEdgeSet, this is just a
+	// pointer to the set and index.
+	set *QuadEdgeSet
+	idx int
+}
+
+// XXX Work in progress: QuadEdgeSet (or collection instead of set?) stores a set of (un-)connected QuadEdges.
+type QuadEdgeSet []quadEdge
+
+func (qes *QuadEdgeSet) NewEdge() QuadEdge {
+	*qes = append(*qes, quadEdge{})
+	return QuadEdge{set: qes, idx: len(*qes) - 1}
+}
+
+var globalQES = &QuadEdgeSet{quadEdge{}}
+
+func CLEANQES() {
+	tmp := (*globalQES)[:1]
+	globalQES = &tmp
 }
 
 /*
@@ -52,16 +73,17 @@ o - the origin Vertex
 d - the destination Vertex
 returns the new QuadEdge quartet
 */
-func MakeEdge(o Vertex, d Vertex) *QuadEdge {
-	q0 := new(QuadEdge)
-	q1 := new(QuadEdge)
-	q2 := new(QuadEdge)
-	q3 := new(QuadEdge)
+func MakeEdge(o Vertex, d Vertex) QuadEdge {
+	// XXX Work in progress: uses global QuadEdgeSet
+	q0 := globalQES.NewEdge()
+	q1 := globalQES.NewEdge()
+	q2 := globalQES.NewEdge()
+	q3 := globalQES.NewEdge()
 
-	q0.rot = q1
-	q1.rot = q2
-	q2.rot = q3
-	q3.rot = q0
+	q0.setRot(q1)
+	q1.setRot(q2)
+	q2.setRot(q3)
+	q3.setRot(q0)
 
 	q0.SetNext(q0)
 	q1.SetNext(q3)
@@ -71,8 +93,8 @@ func MakeEdge(o Vertex, d Vertex) *QuadEdge {
 	base := q0
 	base.setOrig(o)
 	base.setDest(d)
-	base.rot.setOrig(o)
-	base.rot.setDest(d)
+	base.rot().setOrig(o)
+	base.rot().setDest(d)
 
 	return base
 }
@@ -85,7 +107,7 @@ are set.
 
 Returns the connected edge.
 */
-func Connect(a *QuadEdge, b *QuadEdge) *QuadEdge {
+func Connect(a QuadEdge, b QuadEdge) QuadEdge {
 	e := MakeEdge(a.Dest(), b.Orig())
 	Splice(e, a.LNext())
 	Splice(e.Sym(), b)
@@ -104,7 +126,7 @@ to break them apart.
 a - an edge to splice
 b - an edge to splice
 */
-func Splice(a *QuadEdge, b *QuadEdge) {
+func Splice(a QuadEdge, b QuadEdge) {
 	alpha := a.ONext().Rot()
 	beta := b.ONext().Rot()
 
@@ -124,7 +146,7 @@ Swap Turns an edge counterclockwise inside its enclosing quadrilateral.
 
 e - the quadedge to turn
 */
-func Swap(e *QuadEdge) {
+func Swap(e QuadEdge) {
 	a := e.OPrev()
 	b := e.Sym().OPrev()
 	Splice(e, a)
@@ -153,7 +175,7 @@ Returns the primary quadedge
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) GetPrimary() *QuadEdge {
+func (qe QuadEdge) GetPrimary() QuadEdge {
 	v1 := qe.Orig()
 	v2 := qe.Dest()
 	if cmp.PointLess(v1, v2) || cmp.PointEqual(v1, v2) {
@@ -179,6 +201,15 @@ public Object getData() {
     return data;
 }
 */
+func (qe QuadEdge) setRot(e QuadEdge) {
+	(*qe.set)[qe.idx].rot = e.idx
+}
+func (qe QuadEdge) rot() QuadEdge {
+	return QuadEdge{
+		set: qe.set,
+		idx: (*qe.set)[qe.idx].rot,
+	}
+}
 
 /*
 Delete marks this quadedge as being deleted. This does not free the memory
@@ -187,8 +218,8 @@ participates in a subdivision.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) Delete() {
-	qe.rot = nil
+func (qe QuadEdge) Delete() {
+	(*qe.set)[qe.idx].rot = 0
 }
 
 /*
@@ -198,8 +229,8 @@ Returns true if this edge has not been deleted.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) IsLive() bool {
-	return qe.rot != nil
+func (qe QuadEdge) IsLive() bool {
+	return (*qe.set)[qe.idx].rot != 0
 }
 
 /*
@@ -207,8 +238,8 @@ SetNext sets the connected edge
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) SetNext(next *QuadEdge) {
-	qe.next = next
+func (qe QuadEdge) SetNext(next QuadEdge) {
+	(*qe.set)[qe.idx].next = next.idx
 }
 
 /**************************************************************************
@@ -223,8 +254,11 @@ Return the rotated edge
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) Rot() *QuadEdge {
-	return qe.rot
+func (qe QuadEdge) Rot() QuadEdge {
+	return QuadEdge{
+		set: qe.set,
+		idx: (*qe.set)[qe.idx].rot,
+	}
 }
 
 /*
@@ -234,8 +268,12 @@ Return the inverse rotated edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) InvRot() *QuadEdge {
-	return qe.rot.Sym()
+func (qe QuadEdge) InvRot() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[qe.idx].rot].rot].rot,
+	}
 }
 
 /*
@@ -245,8 +283,12 @@ Return the sym of the edge
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) Sym() *QuadEdge {
-	return qe.rot.rot
+func (qe QuadEdge) Sym() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[qe.idx].rot].rot,
+	}
 }
 
 /*
@@ -256,8 +298,11 @@ Return the next linked edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) ONext() *QuadEdge {
-	return qe.next
+func (qe QuadEdge) ONext() QuadEdge {
+	return QuadEdge{
+		set: qe.set,
+		idx: (*qe.set)[qe.idx].next,
+	}
 }
 
 /*
@@ -267,8 +312,13 @@ Return the previous edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) OPrev() *QuadEdge {
-	return qe.rot.next.rot
+func (qe QuadEdge) OPrev() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[qe.idx].rot].next].rot,
+	}
+	// return qe.rot.next.rot
 }
 
 /*
@@ -278,8 +328,13 @@ Return the next destination edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) DNext() *QuadEdge {
-	return qe.Sym().ONext().Sym()
+func (qe QuadEdge) DNext() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[s[s[qe.idx].rot].rot].next].rot].rot,
+	}
+	// return qe.Sym().ONext().Sym()
 }
 
 /*
@@ -289,8 +344,13 @@ Return the previous destination edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) DPrev() *QuadEdge {
-	return qe.InvRot().ONext().InvRot()
+func (qe QuadEdge) DPrev() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[s[s[s[s[qe.idx].rot].rot].rot].next].rot].rot].rot,
+	}
+	// return qe.InvRot().ONext().InvRot()
 }
 
 /*
@@ -300,8 +360,13 @@ Return the next left face edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) LNext() *QuadEdge {
-	return qe.InvRot().ONext().Rot()
+func (qe QuadEdge) LNext() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[s[s[qe.idx].rot].rot].rot].next].rot,
+	}
+	// return qe.InvRot().ONext().Rot()
 }
 
 /*
@@ -311,8 +376,13 @@ Return the previous left face edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) LPrev() *QuadEdge {
-	return qe.next.Sym()
+func (qe QuadEdge) LPrev() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[qe.idx].next].rot].rot,
+	}
+	// return qe.next.Sym()
 }
 
 /*
@@ -322,8 +392,13 @@ Return the next right face edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) RNext() *QuadEdge {
-	return qe.rot.next.InvRot()
+func (qe QuadEdge) RNext() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[s[s[qe.idx].rot].next].rot].rot].rot,
+	}
+	// return qe.rot.next.InvRot()
 }
 
 /*
@@ -333,9 +408,16 @@ Return the previous right face edge.
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) RPrev() *QuadEdge {
-	return qe.Sym().ONext()
+func (qe QuadEdge) RPrev() QuadEdge {
+	s := *qe.set
+	return QuadEdge{
+		set: qe.set,
+		idx: s[s[s[qe.idx].rot].rot].next,
+	}
+	// return qe.Sym().ONext()
 }
+
+var ZeroQuadEdge = QuadEdge{}
 
 /**********************************************************************************************
 Data Access
@@ -348,8 +430,8 @@ o - the origin vertex
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) setOrig(o Vertex) {
-	qe.vertex = o
+func (qe QuadEdge) setOrig(o Vertex) {
+	(*qe.set)[qe.idx].vertex = o
 }
 
 /*
@@ -359,7 +441,7 @@ d - the destination vertex
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) setDest(d Vertex) {
+func (qe QuadEdge) setDest(d Vertex) {
 	qe.Sym().setOrig(d)
 }
 
@@ -370,8 +452,8 @@ Returns the origin vertex
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) Orig() Vertex {
-	return qe.vertex
+func (qe QuadEdge) Orig() Vertex {
+	return (*qe.set)[qe.idx].vertex
 }
 
 /*
@@ -381,8 +463,9 @@ Returns the destination vertex
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) Dest() Vertex {
-	return qe.Sym().Orig()
+func (qe QuadEdge) Dest() Vertex {
+	s := *qe.set
+	return s[s[s[qe.idx].rot].rot].vertex
 }
 
 /*
@@ -444,7 +527,7 @@ return a String representing this edge's geometry
 
 If qe is nil a panic will occur.
 */
-func (qe *QuadEdge) String() string {
+func (qe QuadEdge) String() string {
 	if qe.IsLive() == false {
 		return fmt.Sprintf("<deleted %v>", qe.Orig())
 	}

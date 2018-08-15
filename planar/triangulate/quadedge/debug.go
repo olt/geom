@@ -29,7 +29,7 @@ angle and is counter clockwise.
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) hasCCWNeighbor(e *QuadEdge) bool {
+func (qes *QuadEdgeSubdivision) hasCCWNeighbor(e QuadEdge) bool {
 	n := e
 	// if we haven't checked this edge already
 	for true {
@@ -57,10 +57,10 @@ If qes is nil a panic will occur.
 */
 func (qes *QuadEdgeSubdivision) Validate() error {
 	// collect a set of all edges
-	edgeSet := make(map[*QuadEdge]bool)
+	edgeSet := make(map[int]bool)
 	edges := qes.GetEdges()
 	for i := range edges {
-		if _, ok := edgeSet[edges[i]]; ok == true {
+		if _, ok := edgeSet[edges[i].idx]; ok == true {
 			return fmt.Errorf("edge reported multiple times in subdiv: %v", edges[i])
 		}
 		if edges[i].IsLive() == false {
@@ -69,7 +69,7 @@ func (qes *QuadEdgeSubdivision) Validate() error {
 		if edges[i].Sym().IsLive() == false {
 			return fmt.Errorf("a deleted edge is still in subdiv: %v", edges[i].Sym())
 		}
-		edgeSet[edges[i]] = true
+		edgeSet[edges[i].idx] = true
 	}
 
 	return qes.validateONext()
@@ -85,10 +85,10 @@ If qes is nil a panic will occur.
 */
 func (qes *QuadEdgeSubdivision) validateONext() error {
 
-	edgeSet := make(map[*QuadEdge]bool)
+	edgeSet := make(map[int]bool)
 	edges := qes.GetEdges()
 	for _, e := range edges {
-		if _, ok := edgeSet[e]; ok == false {
+		if _, ok := edgeSet[e.idx]; ok == false {
 			// if we haven't checked this edge already
 			n := e
 			for true {
@@ -101,9 +101,9 @@ func (qes *QuadEdgeSubdivision) validateONext() error {
 				if (qes.isFrameEdge(n) == false || qes.isFrameEdge(ccw) == false) && n.Orig().IsCCW(n.Dest(), ccw.Dest()) == false && qes.hasCCWNeighbor(n) == true {
 					return fmt.Errorf("edges are not CCW, expected %v to be CCW of %v", ccw, n)
 				}
-				edgeSet[n] = true
+				edgeSet[n.idx] = true
 				n = ccw
-				if n == e {
+				if n.idx == e.idx {
 					break
 				}
 			}

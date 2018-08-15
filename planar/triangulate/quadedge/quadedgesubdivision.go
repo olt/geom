@@ -51,8 +51,8 @@ type QuadEdgeSubdivision struct {
 
 	// used for edge extraction to ensure edge uniqueness
 	visitedKey               int
-	quadEdges                []*QuadEdge
-	startingEdge             *QuadEdge
+	quadEdges                []QuadEdge
+	startingEdge             QuadEdge
 	tolerance                float64
 	edgeCoincidenceTolerance float64
 	frameVertex              [3]Vertex
@@ -125,7 +125,7 @@ initSubdiv initializes a subdivision from the frame.
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) initSubdiv() *QuadEdge {
+func (qes *QuadEdgeSubdivision) initSubdiv() QuadEdge {
 	// build initial subdivision from frame
 	ea := qes.MakeEdge(qes.frameVertex[0], qes.frameVertex[1])
 	eb := qes.MakeEdge(qes.frameVertex[1], qes.frameVertex[2])
@@ -167,7 +167,7 @@ return a collection of QuadEdges
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) GetEdges() []*QuadEdge {
+func (qes *QuadEdgeSubdivision) GetEdges() []QuadEdge {
 	return qes.quadEdges
 }
 
@@ -189,7 +189,7 @@ return a new quadedge
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) MakeEdge(o Vertex, d Vertex) *QuadEdge {
+func (qes *QuadEdgeSubdivision) MakeEdge(o Vertex, d Vertex) QuadEdge {
 	q := MakeEdge(o, d)
 	qes.quadEdges = append(qes.quadEdges, q)
 	return q
@@ -204,7 +204,7 @@ Return a quadedge
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) Connect(a *QuadEdge, b *QuadEdge) *QuadEdge {
+func (qes *QuadEdgeSubdivision) Connect(a QuadEdge, b QuadEdge) QuadEdge {
 	q := Connect(a, b)
 	qes.quadEdges = append(qes.quadEdges, q)
 	return q
@@ -218,7 +218,7 @@ e - the quadedge to delete
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) Delete(e *QuadEdge) {
+func (qes *QuadEdgeSubdivision) Delete(e QuadEdge) {
 	Splice(e, e.OPrev())
 	Splice(e.Sym(), e.Sym().OPrev())
 
@@ -233,12 +233,12 @@ func (qes *QuadEdgeSubdivision) Delete(e *QuadEdge) {
 
 	// this is inefficient on an array, but this method should be called
 	// infrequently
-	newArray := make([]*QuadEdge, 0, len(qes.quadEdges))
+	newArray := make([]QuadEdge, 0, len(qes.quadEdges))
 	for _, ele := range qes.quadEdges {
 		if ele.IsLive() {
 			newArray = append(newArray, ele)
 
-			if ele.next.IsLive() == false {
+			if ele.ONext().IsLive() == false {
 				log.Fatalf("a dead edge is still linked: %v", ele)
 			}
 		}
@@ -249,7 +249,7 @@ func (qes *QuadEdgeSubdivision) Delete(e *QuadEdge) {
 		if len(qes.quadEdges) > 0 {
 			qes.startingEdge = qes.quadEdges[0]
 		} else {
-			qes.startingEdge = nil
+			qes.startingEdge = ZeroQuadEdge
 		}
 	}
 }
@@ -273,7 +273,7 @@ iterations a ErrLocateFailure will be returned.
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) LocateFromEdge(v Vertex, startEdge *QuadEdge) (*QuadEdge, error) {
+func (qes *QuadEdgeSubdivision) LocateFromEdge(v Vertex, startEdge QuadEdge) (QuadEdge, error) {
 	iter := 0
 	maxIter := len(qes.quadEdges)
 
@@ -292,16 +292,16 @@ func (qes *QuadEdgeSubdivision) LocateFromEdge(v Vertex, startEdge *QuadEdge) (*
 			since the orientation predicates may experience precision failures.
 		*/
 		if iter > maxIter {
-			return nil, ErrLocateFailure
+			return ZeroQuadEdge, ErrLocateFailure
 		}
 
 		if v.Equals(e.Orig()) || v.Equals(e.Dest()) {
 			break
-		} else if v.RightOf(*e) {
+		} else if v.RightOf(e) {
 			e = e.Sym()
-		} else if !v.RightOf(*e.ONext()) {
+		} else if !v.RightOf(e.ONext()) {
 			e = e.ONext()
-		} else if !v.RightOf(*e.DPrev()) {
+		} else if !v.RightOf(e.DPrev()) {
 			e = e.DPrev()
 		} else {
 			// on edge or in triangle containing edge
@@ -321,7 +321,7 @@ location or nil if no such triangle exists
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) Locate(v Vertex) (*QuadEdge, error) {
+func (qes *QuadEdgeSubdivision) Locate(v Vertex) (QuadEdge, error) {
 	return qes.locator.Locate(v)
 }
 
@@ -336,11 +336,11 @@ exists
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) LocateSegment(p0 Vertex, p1 Vertex) (*QuadEdge, error) {
+func (qes *QuadEdgeSubdivision) LocateSegment(p0 Vertex, p1 Vertex) (QuadEdge, error) {
 	// find an edge containing one of the points
 	e, err := qes.locator.Locate(p0)
-	if err != nil || e == nil {
-		return nil, err
+	if err != nil || e == ZeroQuadEdge {
+		return ZeroQuadEdge, err
 	}
 
 	// normalize so that p0 is origin of base edge
@@ -361,7 +361,7 @@ func (qes *QuadEdgeSubdivision) LocateSegment(p0 Vertex, p1 Vertex) (*QuadEdge, 
 			done = true
 		}
 	}
-	return nil, nil
+	return ZeroQuadEdge, nil
 }
 
 /**
@@ -410,7 +410,7 @@ return true if the edge is connected to the frame triangle
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) isFrameEdge(e *QuadEdge) bool {
+func (qes *QuadEdgeSubdivision) isFrameEdge(e QuadEdge) bool {
 	if qes.isFrameVertex(e.Orig()) || qes.isFrameVertex(e.Dest()) {
 		return true
 	}
@@ -478,7 +478,7 @@ Returns true if the vertex lies on the edge
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) IsOnEdge(e *QuadEdge, p geom.Pointer) bool {
+func (qes *QuadEdgeSubdivision) IsOnEdge(e QuadEdge, p geom.Pointer) bool {
 	// vertext version of DistanceToLineSegment from planar/distance.go
 	v := e.Orig()
 	w := e.Dest()
@@ -536,7 +536,7 @@ Returns true if the vertex is a endpoint of the edge
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) IsVertexOfEdge(e *QuadEdge, v Vertex) bool {
+func (qes *QuadEdgeSubdivision) IsVertexOfEdge(e QuadEdge, v Vertex) bool {
 	if (v.EqualsTolerance(e.Orig(), qes.tolerance)) || (v.EqualsTolerance(e.Dest(), qes.tolerance)) {
 		return true
 	}
@@ -626,15 +626,15 @@ func (qes *QuadEdgeSubdivision) IsVertexOfEdge(e *QuadEdge, v Vertex) bool {
 //     return edges;
 //   }
 
-type edgeStack []*QuadEdge
-type edgeSet map[*QuadEdge]bool
+type edgeStack []QuadEdge
+type edgeSet map[int]bool
 
 /*
 push pushes an edge onto the edgeStack
 
 If es is nil a panic will occur.
 */
-func (es *edgeStack) push(edge *QuadEdge) {
+func (es *edgeStack) push(edge QuadEdge) {
 	*es = append(*es, edge)
 }
 
@@ -643,9 +643,9 @@ pop pops an edge off the edgeStack
 
 If es is nil a panic will occur.
 */
-func (es *edgeStack) pop() *QuadEdge {
+func (es *edgeStack) pop() QuadEdge {
 	if len(*es) == 0 {
-		return nil
+		return ZeroQuadEdge
 	}
 	result := (*es)[len(*es)-1]
 	*es = (*es)[:len(*es)-1]
@@ -660,8 +660,8 @@ if _, ok := es[edge]; ok {
 
 If es is nil a panic will occur.
 */
-func (es *edgeSet) contains(edge *QuadEdge) bool {
-	_, ok := (*es)[edge]
+func (es *edgeSet) contains(edge QuadEdge) bool {
+	_, ok := (*es)[edge.idx]
 	return ok
 }
 
@@ -675,11 +675,11 @@ Return a List of QuadEdges
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) GetPrimaryEdges(includeFrame bool) []*QuadEdge {
+func (qes *QuadEdgeSubdivision) GetPrimaryEdges(includeFrame bool) []QuadEdge {
 	qes.visitedKey++
 
-	var edges []*QuadEdge
-	if qes.startingEdge == nil {
+	var edges []QuadEdge
+	if qes.startingEdge == ZeroQuadEdge {
 		return edges
 	}
 	var stack edgeStack
@@ -700,8 +700,8 @@ func (qes *QuadEdgeSubdivision) GetPrimaryEdges(includeFrame bool) []*QuadEdge {
 			stack.push(edge.ONext())
 			stack.push(edge.Sym().ONext())
 
-			visitedEdges[edge] = true
-			visitedEdges[edge.Sym()] = true
+			visitedEdges[edge.idx] = true
+			visitedEdges[edge.Sym().idx] = true
 		}
 	}
 	return edges
@@ -740,19 +740,19 @@ func (qes *QuadEdgeSubdivision) GetPrimaryEdges(includeFrame bool) []*QuadEdge {
 // 	 * Visitors
 // 	 ****************************************************************************/
 
-func (qes *QuadEdgeSubdivision) visitTriangles(triVisitor func(triEdges []*QuadEdge), includeFrame bool) {
+func (qes *QuadEdgeSubdivision) visitTriangles(triVisitor func(triEdges []QuadEdge), includeFrame bool) {
 	qes.visitedKey++
 
 	// visited flag is used to record visited edges of triangles
 	// setVisitedAll(false);
 	var stack *edgeStack = new(edgeStack)
-	if qes.startingEdge != nil {
+	if qes.startingEdge != ZeroQuadEdge {
 		stack.push(qes.startingEdge)
 	}
 
 	visitedEdges := make(edgeSet)
 
-	triEdges := make([]*QuadEdge, 0, 3) // reuse slice for all fetchTriangleToVisit calls
+	triEdges := make([]QuadEdge, 0, 3) // reuse slice for all fetchTriangleToVisit calls
 	for len(*stack) > 0 {
 		edge := stack.pop()
 		if !visitedEdges.contains(edge) {
@@ -774,7 +774,7 @@ visited (for instance, if it is outer)
 
 If qes is nil a panic will occur.
 */
-func (qes *QuadEdgeSubdivision) fetchTriangleToVisit(edge *QuadEdge, stack *edgeStack, includeFrame bool, visitedEdges edgeSet, triEdges []*QuadEdge) []*QuadEdge {
+func (qes *QuadEdgeSubdivision) fetchTriangleToVisit(edge QuadEdge, stack *edgeStack, includeFrame bool, visitedEdges edgeSet, triEdges []QuadEdge) []QuadEdge {
 	curr := edge
 	var isFrame bool
 
@@ -796,11 +796,11 @@ func (qes *QuadEdgeSubdivision) fetchTriangleToVisit(edge *QuadEdge, stack *edge
 		}
 
 		// mark this edge as visited
-		visitedEdges[curr] = true
+		visitedEdges[curr.idx] = true
 
 		curr = curr.LNext()
 
-		if curr == edge {
+		if curr.idx == edge.idx {
 			break
 		}
 	}
@@ -887,7 +887,7 @@ type TriangleCoordinatesVisitor struct {
 	err       error
 }
 
-func (tcv *TriangleCoordinatesVisitor) visit(triEdges []*QuadEdge) {
+func (tcv *TriangleCoordinatesVisitor) visit(triEdges []QuadEdge) {
 	if tcv.err != nil {
 		return
 	}
